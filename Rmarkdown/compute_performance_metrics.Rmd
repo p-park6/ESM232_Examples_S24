@@ -120,7 +120,7 @@ cor(sager_aug$model, sager_aug$obs)
 # turn your evaluation metric into a function
 source("../R/compute_lowflowmetrics.R")
 compute_lowflowmetrics
-compute_lowflowmetrics(m=sager$model,o=sager$obs, month=sager$month, day=sager$day, year=sager$year, wy=sager$wy)
+compute_avg_flowmetrics(m=sager$model,o=sager$obs, month=sager$month, day=sager$day, year=sager$year, wy=sager$wy)
 
 # use different low flow months
 compute_lowflowmetrics(m=sager$model,o=sager$obs, month=sager$month, day=sager$day, year=sager$year, wy=sager$wy, low_flow_months = c(7:9))
@@ -159,15 +159,15 @@ tmp = sager %>% subset(month %in% c(7:9)) %>% group_by(wy, month) %>% summarize(
 
 errmax = mean(tmp$obs)*0.5
  
-perf = perf %>% mutate(low_month_err_trans = max(0,(1-abs(low_month_err/errmax) )))
+perf = perf %>% mutate(low_month_err_trans = max(0,(1-abs(low_daily_err/errmax) )))
 
 # now we have 4 measures that we can combine together
 
-perf = perf %>% mutate(combined = (annual_min_cor + annual_min_err_trans + low_month_err_trans + low_month_cor)/4)
+perf = perf %>% mutate(combined = (annual_min_cor + annual_min_err_trans + low_month_err_trans + low_daily_cor)/4)
 perf
 # or weight differently - we know that minimum flows are hard to get to weight those differently
 
-perf = perf %>% mutate(combined2 = 0.1*annual_min_cor + 0.1*annual_min_err_trans + 0.4*low_month_err_trans+ 0.4*low_month_cor)
+perf = perf %>% mutate(combined2 = 0.1*annual_min_cor + 0.1*annual_min_err_trans + 0.4*low_month_err_trans+ 0.4*low_daily_cor)
 
 perf
 
@@ -204,7 +204,6 @@ msage = read.table("../Data/sagerm.txt", header=T)
 
 # lets say we know the start date from our earlier output
 msage$date = sager$date
-head(msage)
 msage$month = sager$month
 msage$year = sager$year
 msage$day = sager$day
@@ -212,6 +211,8 @@ msage$wy = sager$wy
 
 # and we still have observed data from above
 
+msage = left_join(msage, sager[,c("obs","date")], by=c("date"))
+head(msage)
 
 # how can we plot all results - lets plot water year 1970 otherwise its hard to see
 msagel = msage %>% pivot_longer(cols=!c(date, month, year, day,wy), names_to="run", values_to="flow")
@@ -260,4 +261,66 @@ ggplot(subset(msagel, run == best$run), aes(date, flow)) + geom_line()
 
 
 ```
+
+
+
+
+```{r}
+
+source("../R/compute_lowflowmetrics.R")
+msage = read.table("../Data/sagerm.txt", header=T)
+
+# lets say we know the start date from our earlier output
+msage$date = sager$date
+msage$month = sager$month
+msage$year = sager$year
+msage$day = sager$day
+msage$wy = sager$wy
+
+msagel = msage %>% pivot_longer(cols=!c(date, month, year, day,wy), names_to="run",
+values_to="flow")
+
+# and we still have observed data from above
+
+msagel = left_join(msagel, sager[,c("obs","date")], by=c("date"))
+
+
+short_msage = subset(msagel, wy = c(1965:1976))
+
+
+res = short_msage %>% select(!c("date","month","year","day","wy","obs")) %>%
+map_dbl(compute_avg_flowmetrics, short_msage$obs)
+
+
+res = short_msage %>% select(-date, -month, -day, -year, -wy, -obs ) %>%
+map_df(compute_avg_flowmetrics, o=short_msage$obs, month=short_msage$month,
+day=short_msage$day, year=short_msage$year, wy=short_msage$wy)
+
+
+
+best = res[which.max(res$combined),]
+
+
+
+ggplot(msage, aes(date, msage[,best$sim])) + geom_line()+geom_line(aes(date, obs), col="red")
+
+
+
+worst = res[which.min(res$combined),]
+
+
+
+compruns = msage %>% select(best$sim, worst$sim, date, obs, month, day, year, wy)
+compruns = subset(compruns, wy > 1970)
+compruns_mwy = compruns %>% select(-c(day,date, year)) %>% group_by(month, wy) %>%
+summarize(across(everything(), mean))
+
+
+compruns_mwyl = compruns_mwy %>% pivot_longer(cols=!c(month,wy), names_to="sim",
+values_to="flow")
+compruns_mwyl %>% subset(month==8) %>% ggplot(aes(sim,flow ))+geom_boxplot()
+
+
+```
+
 

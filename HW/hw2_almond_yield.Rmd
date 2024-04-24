@@ -1,0 +1,180 @@
+---
+title: "Homework2 Almond Yield"
+author: Patty Park and Vanessa Salgado
+---
+
+```{r}
+#read in packages
+library(tidyverse)
+library(tibble)
+library(lubridate)
+```
+
+
+```{r}
+#read in txt file
+data <- read.table(file="../Data/clim.txt", sep="")
+#view data file
+#View(data)
+#write the csv to have for future use
+write_csv(data, here::here("Data", "clim.csv"))
+
+climate_data <- read_csv("../Data/clim.csv")
+
+glimpse(climate_data)
+```
+
+```{r}
+climate_data_month <- climate_data %>%
+  select(-c(wyd, wy)) %>%
+  group_by(D, month, year) %>%
+  summarize(max_temp = mean(tmax_c),
+            min_temp = min(tmin_c),
+         sum_precip = sum(precip)) 
+
+
+precip <- subset(climate_data_month, month == 1)$sum_precip
+precip
+
+min_temp <- subset(climate_data_month, month == 2)$min_temp
+min_temp
+
+
+  monthly_yield = -0.015*min_temp - 0.0046*(min_temp^2) - 0.07*sum_precip + 0.0043*(sum_precip^2)+0.28
+  
+  
+#create list to append to
+# list_1 <- data.frame()
+list_1 <- list()
+
+  
+for (i in seq(1:length(precip))){
+  monthly_yield = -0.015*min_temp[i] - 0.0046*(min_temp[i]^2) - 0.07*precip[i] + 0.0043*(precip[i]^2)+0.28
+  list_1 <- append(list_1, monthly_yield)
+}
+
+paste0("Max: ", round(max(unlist(list_1)), 5))
+paste0("Min: ", round(min(unlist(list_1)), 5))
+paste0("Mean: ", round(mean(unlist(list_1)), 5))
+
+max(unlist(list_1))
+
+
+print(list_1)
+print(monthly_yield)
+
+
+
+#do one for precip jan
+
+#do one for tmin feb
+```
+
+
+```{r}
+almond_yield_max_test = function(dataset, month_num){
+  #clean up dataset to have information we are interested in (ex. max and min of temp and sum of precip)
+  climate_data_month <- dataset %>%
+    select(-c(wyd, wy)) %>% #get rid of columns we are not interested in
+    group_by(month, year) %>% #get monthly readings
+    summarize(max_temp = mean(tmax_c), #get mean max temp of that month
+              min_temp = min(tmin_c), #get mean min temp of that month
+              sum_precip = sum(precip)) #get sum of precip of that month
+  
+  #subset to only get precip data of the month before
+  precip <- subset(climate_data_month, 
+                   month == ifelse(month_num == 1, 12, month_num-1))$sum_precip
+  
+  #subset to only get min_temp data of the month we are interested in
+  min_temp <- subset(climate_data_month, month == month_num)$min_temp
+  
+  #create an empty list for the monthly_yield to append to
+  yield_list <- list()
+  
+  #create a for loop to go through the whole list and append the results to the empty list created previously
+  for (i in seq(1:length(precip))){
+    monthly_yield = -0.015*min_temp[i] - 0.0046*(min_temp[i]^2) - 0.07*precip[i] + 0.0043*(precip[i]^2)+0.28
+    yield_list <- append(yield_list, monthly_yield) #append onto the list
+  }
+  
+  #print out results (max, min, and mean temp)
+  print(paste0("Max: ", round(max(unlist(yield_list)), 5)))
+  print(paste0("Min: ", round(min(unlist(yield_list)), 5)))
+  print(paste0("Mean: ", round(mean(unlist(yield_list)), 5)))
+  
+}
+
+almond_yield_max_test(climate_data, month_num = 1)
+
+```
+
+
+```{r}
+almond_yield<- function(dataset, month_num) {
+  
+  # calculate minimum temperatures in Feb from each year
+  min_temp <- dataset %>%
+    group_by(month, year) %>% # grouping by month and year
+    filter(month == month_num) %>% # select just feb
+    summarise(feb_tmin_c = mean(tmin_c)) %>% #find mean temp per year
+    group_by() %>% 
+    select(-month)# get the min
+  
+  # calculate total precipitation in Jan for each year
+  precip <- dataset %>%
+    group_by(month, year) %>%
+    filter(month == ifelse(month_num == 1, 12, month_num-1)) %>% # select just jan
+    summarise(jan_precip_mm = sum(precip)) %>% #find sum of precip per year
+    group_by() %>% 
+    select(-month)# get the sum
+  
+  # calculate almond yield 
+  yield <- full_join(min_temp, precip) %>%
+    mutate(yield_tons = -0.015*feb_tmin_c - 0.0046*feb_tmin_c^2 - 0.07*jan_precip_mm + 0.0043*jan_precip_mm^2 + 0.28) # calc based on equation from lobell et al. 2006
+  
+  print(yield)
+  
+  # calculate the min, max, and mean yield over the whole time period
+  min_yield <- min(yield$yield_tons)
+  max_yield <- max(yield$yield_tons)
+  mean_yield <- mean(yield$yield_tons)
+  
+  # print the min, max, and mean
+  return(cat(paste0("Minimum Yield: ", round(min_yield, 2), "ton(s) per acre, \n",
+                      "Maximum Yield: ", round(max_yield, 2), "ton(s) per acre, \n",
+                      "Mean Yield: ", round(mean_yield, 2), "ton(s) per acre")))
+  
+}
+
+almond_yield(climate_data, 2)
+
+```
+
+
+
+```{r}
+# subset min_temp for feb 
+min_temp <- climate_data %>% 
+  group_by(month, year) %>% # grouping by month and year
+  filter(month == 2) %>% # select just feb
+  summarise(feb_tmin_c = mean(tmin_c)) %>% #find mean temp per year
+  group_by() %>% 
+  select(-month) #take our month from dataframe
+  
+# calculate total january precipitation for each year
+precip <- climate_data %>%
+  group_by(month, year) %>%
+  filter(month == 1) %>% # select just jan
+  summarise(jan_precip_mm = sum(precip)) %>% #find sum of precip per year
+  group_by() %>% 
+  select(-month)
+  
+# join dataset together
+yield <- left_join(min_temp, precip) 
+
+print(yield)
+```
+
+
+
+

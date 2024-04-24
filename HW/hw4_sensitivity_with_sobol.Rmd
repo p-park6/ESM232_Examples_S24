@@ -1,0 +1,146 @@
+---
+title: "Homework4 Sensitivity with Sobol"
+author: Patty Park
+---
+# Part 1
+## Paragraph Recap
+
+For my reading, I chose to read the "Exploring snow model parameter sensitivity using Sobol' variance decomposition". Here, there are two models that the paper uses are the SNOW-17 Model (a conceptual model), and the Variable Infiltration Capacity (VIC) Snow Model (a physically-based model). To properly create this model simulation, the researchers created baselines for each site per parameter. To properly evaluate the Sobol analysis, four functions were used to see the difference between the SWE and the observed time series. These researchers were able to calculate the effects by using the total toder sensitivity, which they outlined it as the sum of the first order sensitivity, the second order sensitivity and any other effects. Some of their results is finding out how the SWE model deviated well away from the VIC model. The paper attributes it to the difference in input (SWE used daily mean temp as an input while VIC used daily min and max temps as an input). This paper ends by stating that these parameter uncertainties will help improve modeling practice as well as management decisions, such as water managemnet decision, as the paper puts as an example.
+
+# Part 2
+
+Repeat the sensitivity analysis that we have been working on in class BUT lets assume that we are in a different locations - where windpeeds are substantially higher and more variable AND vegetation is shorter - See details below
+
+Consider the sensitivity of your estimate to uncertainty in the following parameters and inputs
+
+    height
+
+kd
+
+k0
+
+v
+
+Windspeeds v
+
+are normally distributed with a mean of 300 cm/s with a standard deviation of 50 cm/s
+
+For vegetation height assume that height is somewhere between 3.5 and 5.5 m (but any value in that range is equally likely)
+
+For the kd
+and k0
+
+parameters you can assume that they are normally distributed with standard deviation of 1% of their default values
+
+
+
+    
+    
+
+Submit the Rmarkdown on Canvas as usual
+
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#load in packages
+library(sensitivity)
+library(tidyverse)
+library(gridExtra)
+library(purrr)
+library(ggpubr)
+```
+
+
+Use the Sobel approach to generate parameter values for the 4 parameters
+Run the atmospheric conductance model for these parameters
+
+```{r}
+source("../R/Catm.R")
+
+# generate two examples of random number from parameter distributions
+
+np=1000
+k_o = rnorm(mean=0.1,sd=0.1*0.1, n=np)
+k_d = rnorm(mean=0.7, sd=0.7*0.1, n=np)
+v = rnorm(mean=300, sd=50, n=np)
+height = runif(min=3.5, max=5.5, n=np)
+
+X1 = cbind.data.frame(k_o, k_d, v, height=height)
+
+# repeat sampling
+k_o = rnorm(mean=0.1,sd=0.1*0.1, n=np)
+k_d = rnorm(mean=0.7, sd=0.7*0.1, n=np)
+v = rnorm(mean=300, sd=50, n=np)
+height = runif(min=3.5, max=5.5, n=np)
+
+X2 = cbind.data.frame(k_o, k_d, v, height=height)
+
+# there are different versions of sobol functions that have different approaches for estimating parameters and indices, we use an approach implemented by jansen 
+
+sens_Catm_Sobol = sobolSalt(model = NULL, X1, X2, nboot = 100)
+
+```
+
+Estimate the Sobol Indices for your output
+
+```{r}
+# run model for all parameter sets
+# make sure you give the parameters names
+
+parms = as.data.frame(sens_Catm_Sobol$X)
+colnames(parms)= colnames(X1)
+res = pmap_dbl(parms, Catm)
+
+
+sens_Catm_Sobol = sensitivity::tell(sens_Catm_Sobol,res, res.names="ga")
+
+# main effect:  partitions variance (main effect without co-variance) - sums approximately to one
+sens_Catm_Sobol$S
+# useful to add names
+row.names(sens_Catm_Sobol$S) = colnames(parms)
+sens_Catm_Sobol$S
+
+# total effect - accounts for parameter interactions
+row.names(sens_Catm_Sobol$T) = colnames(parms)
+sens_Catm_Sobol$T
+
+# Both the main effect and total effect can tell us something about how the parameter influences results
+
+
+print(sens_Catm_Sobol)
+```
+
+
+
+Plot conductance estimates in a way that accounts for parameter uncertainty
+
+```{r}
+# graph two most sensitive parameters
+both = cbind.data.frame(parms, gs=sens_Catm_Sobol$y)
+
+# look at overall gs sensitvity to uncertainty
+ggplot(both, aes(x=gs))+geom_histogram()+geom_vline(xintercept=mean(both$gs), col="red") +
+  labs(x = "Count",
+       y = "Conductance (mm/s)",
+       title = "Parameter Uncertainty")
+
+```
+
+
+Plot conductance estimates against windspeed use the parameter that is 2nd in terms of total effect on response
+
+```{r}
+# look at response of conductance to the two interesting variables
+ggplot(both, aes(v,gs, col=k_d))+geom_point()+labs(y="Conductance (mm/s)", x="Windspeed", title = "Conductance Estimate on Windspeed")
+
+
+```
+
+
+
+Comment on what this tells you about how atmospheric conductance and its sensitivity to variation in windspped differs in this setting as compared to the setting that we examined in class where windspeed was lower and less variable and vegetation was taller.
+
+
+
+

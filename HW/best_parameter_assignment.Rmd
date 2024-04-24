@@ -1,0 +1,117 @@
+---
+title: "best_parameter_assignment"
+output: html_document
+date: "2024-04-23"
+---
+
+```{r setup, include=FALSE}
+library(sensitivity)
+library(tidyverse)
+library(purrr)
+library(ggpubr)
+```
+
+```{r}
+# Load data
+sager = read.table("../Data/sager.txt", header=T)
+head(sager)
+
+# add date
+sager = sager %>% mutate(date = paste(day,month,year, sep="/"))
+sager$date = as.Date(sager$date,"%d/%m/%Y")
+
+# plot
+sagerl = sager %>% pivot_longer(cols=c("model","obs"), names_to="source",
+                                  values_to="flow")
+
+# basic plot
+ggplot(sagerl, aes(date, flow, col=source, linetype=source))+geom_line()
+
+
+```
+
+```{r}
+# turn your evaluation metric into a function
+source("../HW/compute_avg_flowmetrics.R")
+
+compute_avg_flowmetrics(m=sager$model,o=sager$obs, month=sager$month, day=sager$day, year=sager$year, wy=sager$wy)
+
+```
+
+## Part 2
+### Pre calibration
+```{r}
+
+#change source whatever filepath makes sense for your computer
+source("../HW/compute_avg_flowmetrics.R")
+#read in dataset
+msage = read.table("../Data/sagerm.txt", header=T)
+
+# keep track of number of simulations (e.g results for each parameter set)
+# use as a column names
+nsim = ncol(msage)
+snames = sprintf("S%d",seq(from=1, to=nsim))
+colnames(msage)=snames
+
+
+# create parameters for the time parameters
+msage$date = sager$date
+msage$month = sager$month
+msage$year = sager$year
+msage$day = sager$day
+msage$wy = sager$wy
+
+
+#left join the sager observations into msagel
+msage = left_join(msage, sager[,c("obs","date")], by=c("date"))
+
+
+ #pivot longer the dataframe so that run and flow are it's own column
+msagel = msage %>% pivot_longer(cols=!c(date, month, year, day, wy, obs), names_to="run", values_to="flow")
+
+
+#subset for the pre calibration years
+short_msage = subset(msagel, wy = c(1965:1976))
+
+
+#use map_df to for sensitivity analysis
+res = msage %>% #piping from msage. should be piping from short_msage but is not working for some reason
+  select(-date, -month, -day, -year, -wy, -obs ) %>%
+  map_df(compute_avg_flowmetrics, o=short_msage$obs, month=short_msage$month, day=short_msage$day, year=short_msage$year, wy=short_msage$wy)
+#for the function, maybe necessary to change it to output the numbers in the list only
+
+
+#look at the range of metrics
+summary(res)
+#add a row to sync with simulation number
+res$sim = snames
+#
+resl = res %>% pivot_longer(-sim, names_to="metric", values_to="value")
+
+#find best parameter set
+best = res[which.max(res$combined),] #does not work
+
+#find worst parameter set
+worst = res[which.min(res$combined),] #does not work
+
+ggplot(msage, aes(date, msage[,best$sim])) + geom_line()+geom_line(aes(date, obs), col="red")
+
+
+
+# NOT FINISHED
+
+
+
+compruns = msage %>% select(best$sim, worst$sim, date, obs, month, day, year, wy)
+compruns = subset(compruns, wy > 1970)
+compruns_mwy = compruns %>% select(-c(day,date, year)) %>% group_by(month, wy) %>%
+summarize(across(everything(), mean))
+
+
+compruns_mwyl = compruns_mwy %>% pivot_longer(cols=!c(month,wy), names_to="sim",
+values_to="flow")
+compruns_mwyl %>% subset(month==8) %>% ggplot(aes(sim,flow ))+geom_boxplot()
+
+
+```
+

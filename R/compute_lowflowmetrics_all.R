@@ -17,10 +17,10 @@ compute_lowflowmetrics_all = function(m,o, month, day, year,wy, low_flow_months=
                                       max_err_annual_min=NULL, max_err_low_month=NULL, wts=c(0.25,0.25,0.25,0.25)) {
 
 
-  flow = cbind.data.frame(m,o, month, day, year,wy)
+  flow = cbind.data.frame(m,o, month, day, year, wy)
   # first lets get minimum yearly values
 
-  tmp = flow %>% group_by(wy) %>% dplyr::summarize(mino=min(o), minm=min(m))
+  tmp = flow %>% group_by(month, day) %>% dplyr::summarize(mino=min(o), minm=min(m))
 
   annual_min_err = mean(tmp$minm-tmp$mino)
 
