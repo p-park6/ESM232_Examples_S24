@@ -99,23 +99,9 @@ parms = as.data.frame(sens_Catm_Sobol$X)
 colnames(parms)= colnames(X1)
 res = pmap_dbl(parms, Catm)
 
-
+#tell sensitivity object about results associated with each parameter set
 sens_Catm_Sobol = sensitivity::tell(sens_Catm_Sobol,res, res.names="ga")
 
-# main effect:  partitions variance (main effect without co-variance) - sums approximately to one
-sens_Catm_Sobol$S
-# useful to add names
-row.names(sens_Catm_Sobol$S) = colnames(parms)
-sens_Catm_Sobol$S
-
-# total effect - accounts for parameter interactions
-row.names(sens_Catm_Sobol$T) = colnames(parms)
-sens_Catm_Sobol$T
-
-# Both the main effect and total effect can tell us something about how the parameter influences results
-
-
-print(sens_Catm_Sobol)
 
 ```
  

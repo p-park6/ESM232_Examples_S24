@@ -11,35 +11,6 @@ For my reading, I chose to read the "Exploring snow model parameter sensitivity 
 
 Repeat the sensitivity analysis that we have been working on in class BUT lets assume that we are in a different locations - where windpeeds are substantially higher and more variable AND vegetation is shorter - See details below
 
-Consider the sensitivity of your estimate to uncertainty in the following parameters and inputs
-
-    height
-
-kd
-
-k0
-
-v
-
-Windspeeds v
-
-are normally distributed with a mean of 300 cm/s with a standard deviation of 50 cm/s
-
-For vegetation height assume that height is somewhere between 3.5 and 5.5 m (but any value in that range is equally likely)
-
-For the kd
-and k0
-
-parameters you can assume that they are normally distributed with standard deviation of 1% of their default values
-
-
-
-    
-    
-
-Submit the Rmarkdown on Canvas as usual
-
-
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -49,6 +20,7 @@ library(tidyverse)
 library(gridExtra)
 library(purrr)
 library(ggpubr)
+library(gt)
 ```
 
 
@@ -61,16 +33,16 @@ source("../R/Catm.R")
 # generate two examples of random number from parameter distributions
 
 np=1000
-k_o = rnorm(mean=0.1,sd=0.1*0.1, n=np)
-k_d = rnorm(mean=0.7, sd=0.7*0.1, n=np)
+k_o = rnorm(mean=0.1,sd=0.1*0.01, n=np)
+k_d = rnorm(mean=0.7, sd=0.7*0.01, n=np)
 v = rnorm(mean=300, sd=50, n=np)
 height = runif(min=3.5, max=5.5, n=np)
 
 X1 = cbind.data.frame(k_o, k_d, v, height=height)
 
 # repeat sampling
-k_o = rnorm(mean=0.1,sd=0.1*0.1, n=np)
-k_d = rnorm(mean=0.7, sd=0.7*0.1, n=np)
+k_o = rnorm(mean=0.1,sd=0.1*0.01, n=np)
+k_d = rnorm(mean=0.7, sd=0.7*0.01, n=np)
 v = rnorm(mean=300, sd=50, n=np)
 height = runif(min=3.5, max=5.5, n=np)
 
@@ -78,37 +50,25 @@ X2 = cbind.data.frame(k_o, k_d, v, height=height)
 
 # there are different versions of sobol functions that have different approaches for estimating parameters and indices, we use an approach implemented by jansen 
 
-sens_Catm_Sobol = sobolSalt(model = NULL, X1, X2, nboot = 100)
+sens_Sobol_atmcon = sobolSalt(model = NULL, X1, X2, nboot = 100)
 
 ```
 
-Estimate the Sobol Indices for your output
 
+Get necessary parameters
 ```{r}
 # run model for all parameter sets
-# make sure you give the parameters names
+# give parameters name
 
-parms = as.data.frame(sens_Catm_Sobol$X)
+parms = as.data.frame(sens_Sobol_atmcon$X)
 colnames(parms)= colnames(X1)
 res = pmap_dbl(parms, Catm)
 
+#tell sensitivity object about results associated with each parameter set
+sens_Sobol_atmcon = sensitivity::tell(sens_Sobol_atmcon,
+                                    res, 
+                                    res.names="ga")
 
-sens_Catm_Sobol = sensitivity::tell(sens_Catm_Sobol,res, res.names="ga")
-
-# main effect:  partitions variance (main effect without co-variance) - sums approximately to one
-sens_Catm_Sobol$S
-# useful to add names
-row.names(sens_Catm_Sobol$S) = colnames(parms)
-sens_Catm_Sobol$S
-
-# total effect - accounts for parameter interactions
-row.names(sens_Catm_Sobol$T) = colnames(parms)
-sens_Catm_Sobol$T
-
-# Both the main effect and total effect can tell us something about how the parameter influences results
-
-
-print(sens_Catm_Sobol)
 ```
 
 
@@ -117,13 +77,16 @@ Plot conductance estimates in a way that accounts for parameter uncertainty
 
 ```{r}
 # graph two most sensitive parameters
-both = cbind.data.frame(parms, gs=sens_Catm_Sobol$y)
+both = cbind.data.frame(parms, gs=sens_Sobol_atmcon$y)
 
 # look at overall gs sensitvity to uncertainty
-ggplot(both, aes(x=gs))+geom_histogram()+geom_vline(xintercept=mean(both$gs), col="red") +
-  labs(x = "Count",
-       y = "Conductance (mm/s)",
-       title = "Parameter Uncertainty")
+ggplot(both, aes(x=gs))+
+  geom_histogram(col = "blue4", fill = "lightblue")+
+  geom_vline(xintercept=mean(both$gs), col="red") +
+  labs(y = "Count",
+       x = "Conductance (mm/s)",
+       title = "Parameter Uncertainty") +
+  theme_minimal()
 
 ```
 
@@ -131,16 +94,37 @@ ggplot(both, aes(x=gs))+geom_histogram()+geom_vline(xintercept=mean(both$gs), co
 Plot conductance estimates against windspeed use the parameter that is 2nd in terms of total effect on response
 
 ```{r}
-# look at response of conductance to the two interesting variables
-ggplot(both, aes(v,gs, col=k_d))+geom_point()+labs(y="Conductance (mm/s)", x="Windspeed", title = "Conductance Estimate on Windspeed")
+# look at response of conductance with the parameter that is 2nd in terms of total effect on response
+ggplot(both, aes(v,gs, col=height))+
+  geom_point()+
+  labs(y="Conductance (mm/s)", x="Windspeed", title = "Conductance Estimate on Windspeed") +
+  theme_minimal()
+
+```
+
+Estimate the Sobol Indices for your output
+
+```{r}
+# main effect:  partitions variance (main effect without co-variance) - sums approximately to one
+# useful to add names
+row.names(sens_Sobol_atmcon$S) = colnames(parms)
+sens_Sobol_atmcon$S %>% gt() %>% tab_header(title = "First Order Indices")
+
+# total effect - accounts for parameter interactions
+row.names(sens_Sobol_atmcon$T) = colnames(parms)
+sens_Sobol_atmcon$T %>% gt() %>% tab_header(title = "Total Order Indices")
+
+# Both the main effect and total effect can tell us something about how the parameter influences results
 
 
 ```
 
 
+Comment on what this tells you about how atmospheric conductance and its sensitivity to variation in windspeed differs in this setting as compared to the setting that we examined in class where windspeed was lower and less variable and vegetation was taller.
 
-Comment on what this tells you about how atmospheric conductance and its sensitivity to variation in windspped differs in this setting as compared to the setting that we examined in class where windspeed was lower and less variable and vegetation was taller.
+There is a broader scope of conductance and lower count overall. I conclude that there is less uncertainty from the histogram graph. There seems to be a more visible trend in the second graph that incorporates the parameter that is 2nd in terms of total effect on response. Also interesting to note is that the darker colored circled, controlled by the parameter k_d, seems to be more populated at the bottom of the cluster while the lighter colored circled, controlled by the parameter k_d, seems to be more populated at the top of the cluster.
 
+There would be less uncertainty and more sensitivity since we have changed our parameters to look at a higher wind speed and lower height for the vegetation. I would imagine that the higher wind speed would be impacting the conductance as this is creating more friction in the atmosphere. The low height of the plant matter are keeping the plant matter together, however, which is not contributing to more friction being created.
 
 
 
